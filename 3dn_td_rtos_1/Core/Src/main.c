@@ -107,13 +107,16 @@ void task_uart1(void * unused)
 	for(;;)
 	{
 		// On veut bloquer la tâche jusqu'à interruption
-		xSemaphoreTake(uart1_rx_semaphore, portMAX_DELAY);
+		if (xSemaphoreTake(uart1_rx_semaphore, 1000) == pdFALSE)
+		{
+			printf("plus vite!\r\n");
+		}
+		else {
+			HAL_UART_Transmit(&huart1, &uart1_chr, 1, HAL_MAX_DELAY);	// echo
+			HAL_UART_Receive_IT(&huart1, &uart1_chr, 1);	// réarme la réception
 
-		HAL_UART_Transmit(&huart1, &uart1_chr, 1, HAL_MAX_DELAY);	// echo
-		HAL_UART_Receive_IT(&huart1, &uart1_chr, 1);	// réarme la réception
-
-		/* Fonction qui prend du temps à exécuter */
-
+			/* Fonction qui prend du temps à exécuter */
+		}
 	}
 }
 
