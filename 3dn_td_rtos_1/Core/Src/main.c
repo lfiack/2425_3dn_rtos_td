@@ -52,6 +52,7 @@
 
 /* USER CODE BEGIN PV */
 static TaskHandle_t task_uart1_handle;
+static SemaphoreHandle_t uart1_rx_semaphore;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -69,6 +70,49 @@ int __io_putchar(int chr)
 	return chr;
 }
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	BaseType_t HigherPriorityTaskWoken;
+
+	if (USART1 == huart->Instance)
+	{
+		// On veut débloquer la tâche
+		xSemaphoreGiveFromISR(uart1_rx_semaphore, &HigherPriorityTaskWoken);
+
+		// On est en interruption, le contexte est *différent* d'une tache
+		// Donc le changement de contexte s'effectue différemment
+		// Apres cette fonction, HigherPriorityTaskWoken vaut 1 si l'on a réveillé une tache plus prioritaire
+	}
+
+	// Appelle une version modifiée du scheduler si une tache plus prioritaire a été appelée
+	portYIELD_FROM_ISR(HigherPriorityTaskWoken);
+}
+
+void task_uart1(void * unused)
+{
+	printf("Entering Task UART1\r\n");
+
+	uint8_t uart1_chr;
+
+	uart1_rx_semaphore = xSemaphoreCreateBinary();
+
+	// arme une première fois la réception
+	HAL_UART_Receive_IT(&huart1, &uart1_chr, 1);
+
+	for(;;)
+	{
+		// On veut bloquer la tâche jusqu'à interruption
+		xSemaphoreTake(uart1_rx_semaphore, portMAX_DELAY);
+
+		HAL_UART_Transmit(&huart1, &uart1_chr, 1, HAL_MAX_DELAY);	// echo
+		HAL_UART_Receive_IT(&huart1, &uart1_chr, 1);	// réarme la réception
+
+		/* Fonction qui prend du temps à exécuter */
+
+	}
+}
+
+#ifdef NOTIFICATION
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	BaseType_t HigherPriorityTaskWoken;
@@ -107,6 +151,7 @@ void task_uart1(void * unused)
 
 	}
 }
+#endif
 
 #ifdef TD1
 int variable_globale = 0;
