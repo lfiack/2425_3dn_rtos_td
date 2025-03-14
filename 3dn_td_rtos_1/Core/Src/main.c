@@ -38,6 +38,9 @@
 #define TASK2_PRIORITY 2
 #define TASK1_STACK_DEPTH 250
 #define TASK2_STACK_DEPTH 250
+
+#define TASK_UART1_STACK_DEPTH 256
+#define TASK_UART1_PRIORITY 1
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -48,7 +51,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+static TaskHandle_t task_uart1_handle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -66,14 +69,21 @@ int __io_putchar(int chr)
 	return chr;
 }
 
-uint8_t uart1_rx_cplt = 0;
-
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
+	BaseType_t HigherPriorityTaskWoken;
+
 	if (USART1 == huart->Instance)
 	{
-		uart1_rx_cplt = 1;
+		// On veut débloquer la tâche
+		vTaskNotifyGiveFromISR(task_uart1_handle, &HigherPriorityTaskWoken);
+		// On est en interruption, le contexte est *différent* d'une tache
+		// Donc le changement de contexte s'effectue différemment
+		// Apres cette fonction, HigherPriorityTaskWoken vaut 1 si l'on a réveillé une tache plus prioritaire
 	}
+
+	// Appelle une version modifiée du scheduler si une tache plus prioritaire a été appelée
+	portYIELD_FROM_ISR(HigherPriorityTaskWoken);
 }
 
 void task_uart1(void * unused)
@@ -87,15 +97,14 @@ void task_uart1(void * unused)
 
 	for(;;)
 	{
-		if (uart1_rx_cplt == 1)
-		{
-			uart1_rx_cplt = 0;
+		// On veut bloquer la tâche jusqu'à interruption
+		ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-			HAL_UART_Transmit(&huart1, &uart1_chr, 1, HAL_MAX_DELAY);	// echo
-			HAL_UART_Receive_IT(&huart1, &uart1_chr, 1);	// réarme la réception
+		HAL_UART_Transmit(&huart1, &uart1_chr, 1, HAL_MAX_DELAY);	// echo
+		HAL_UART_Receive_IT(&huart1, &uart1_chr, 1);	// réarme la réception
 
-			/* Fonction qui prend du temps à exécuter */
-		}
+		/* Fonction qui prend du temps à exécuter */
+
 	}
 }
 
@@ -165,9 +174,7 @@ int main(void)
 	/* USER CODE BEGIN 2 */
 	printf("\r\n===== TD RTOS 1 =====\r\n");
 
-#define TASK_UART1_STACK_DEPTH 256
-#define TASK_UART1_PRIORITY 1
-	if (xTaskCreate(task_uart1, "UART1", TASK_UART1_STACK_DEPTH, NULL, TASK_UART1_PRIORITY, NULL) != pdPASS)
+	if (xTaskCreate(task_uart1, "UART1", TASK_UART1_STACK_DEPTH, NULL, TASK_UART1_PRIORITY, &task_uart1_handle) != pdPASS)
 	{
 		printf("Could not allocate Task UART 1\r\n");
 		Error_Handler();
