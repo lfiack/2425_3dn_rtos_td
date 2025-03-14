@@ -66,14 +66,36 @@ int __io_putchar(int chr)
 	return chr;
 }
 
-uint8_t uart1_chr;
+uint8_t uart1_rx_cplt = 0;
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if (USART1 == huart->Instance)
 	{
-		HAL_UART_Transmit(&huart1, &uart1_chr, 1, HAL_MAX_DELAY);
-		HAL_UART_Receive_IT(&huart1, &uart1_chr, 1);	// TODO copier dans le main (avant vTaskStartScheduler)
+		uart1_rx_cplt = 1;
+	}
+}
+
+void task_uart1(void * unused)
+{
+	printf("Entering Task UART1\r\n");
+
+	uint8_t uart1_chr;
+
+	// arme une première fois la réception
+	HAL_UART_Receive_IT(&huart1, &uart1_chr, 1);
+
+	for(;;)
+	{
+		if (uart1_rx_cplt == 1)
+		{
+			uart1_rx_cplt = 0;
+
+			HAL_UART_Transmit(&huart1, &uart1_chr, 1, HAL_MAX_DELAY);	// echo
+			HAL_UART_Receive_IT(&huart1, &uart1_chr, 1);	// réarme la réception
+
+			/* Fonction qui prend du temps à exécuter */
+		}
 	}
 }
 
@@ -143,7 +165,13 @@ int main(void)
 	/* USER CODE BEGIN 2 */
 	printf("\r\n===== TD RTOS 1 =====\r\n");
 
-	HAL_UART_Receive_IT(&huart1, &uart1_chr, 1);
+#define TASK_UART1_STACK_DEPTH 256
+#define TASK_UART1_PRIORITY 1
+	if (xTaskCreate(task_uart1, "UART1", TASK_UART1_STACK_DEPTH, NULL, TASK_UART1_PRIORITY, NULL) != pdPASS)
+	{
+		printf("Could not allocate Task UART 1\r\n");
+		Error_Handler();
+	}
 
 #ifdef TD1
 	BaseType_t ret;
