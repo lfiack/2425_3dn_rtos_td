@@ -51,8 +51,8 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-static TaskHandle_t task_uart1_handle;
-static SemaphoreHandle_t uart1_rx_semaphore;
+static TaskHandle_t task_uart1_handle = NULL;
+static SemaphoreHandle_t uart1_rx_semaphore = NULL;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -95,6 +95,11 @@ void task_uart1(void * unused)
 	uint8_t uart1_chr;
 
 	uart1_rx_semaphore = xSemaphoreCreateBinary();
+	if (uart1_rx_semaphore == NULL)
+	{
+		printf("Could not create uart1_rx_semaphore\r\n");
+		Error_Handler();
+	}
 
 	// arme une première fois la réception
 	HAL_UART_Receive_IT(&huart1, &uart1_chr, 1);
